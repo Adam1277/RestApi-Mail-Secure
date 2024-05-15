@@ -1,0 +1,189 @@
+package com.spamdetector.util;
+
+import com.spamdetector.domain.TestFile;
+
+import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.stream.Stream;
+
+
+/**
+ * TODO: This class will be implemented by you
+ * You may create more methods to help you organize you strategy and make you code more readable
+ */
+public class SpamDetector {
+    public List<TestFile> getTestResults;
+    private HashMap<String, Integer> trainHamFreq; //Frequency of words appearing in ham files
+    private HashMap<String, Integer> trainSpamFreq; //Frequency of words appearing in spam files
+    private TreeMap<String, Double> spamProbMap; //Probability that word appears in spam messages
+    private TreeMap<String, Double> hamProbMap; //Probability that word appears in ham messages
+    private double accuracy;
+    private double precision;
+
+
+    public List<TestFile> trainAndTest(File mainDirectory) {
+        List<TestFile> testFiles = new ArrayList<>();
+        trainHamFreq = new HashMap<>(); //Allocate space
+        trainSpamFreq = new HashMap<>(); //Allocate space
+
+        try { /*Train spam detector or rather fill up spam and ham frequency hashmaps*/
+            train(new File (mainDirectory, "train/spam").getPath(), trainSpamFreq);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        try {
+            train(new File (mainDirectory, "train/ham").getPath(), trainHamFreq);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        calculateProbabilities(); /*Fill probability maps*/
+        List<TestFile> spamTestResults = new ArrayList<>();
+        try { /*Test spam for the probability that they are spam emails*/
+            spamTestResults = test(new File(mainDirectory, "test/spam"), "Spam");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        List<TestFile> hamTestResults = null;
+        try { /*Test ham for the probability that they are spam emails*/
+            hamTestResults = test(new File(mainDirectory, "test/ham"), "Ham");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        testFiles.addAll(spamTestResults); //Add all results to testFiles
+        testFiles.addAll(hamTestResults);
+
+        //return testFiles
+        return testFiles;
+    }
+    public List<TestFile> test(File mainDirectory, String actualClass) throws IOException
+    { /*Reads */
+        List<TestFile> testFiles = new ArrayList<>(); //Will be returning this list of TestFile objects
+        List<Double> probabilities = new ArrayList<>(); //Spam probability of each word in the file
+        for (File file : Objects.requireNonNull(mainDirectory.listFiles())) //Go file by file for every file in mainDirectory
+        {
+            if (file.isFile())
+            {
+                BufferedReader reader = new BufferedReader(new FileReader(file));
+                String line;
+                while ((line = reader.readLine()) != null) { //Read line by line
+                    String[] words = line.split("\\s+"); // Delimiter is whitespace
+                    for (String word : words) //Iterate word by word for the given line
+                    {
+                        // ignore case
+                        word = word.toLowerCase();
+                        if(spamProbMap.containsKey(word) && actualClass.equals("Spam"))
+                        { //Based on actualClass value add to the probabilities arrayList which will be used to compute spam probability
+                            probabilities.add(spamProbMap.get(word));
+                        }
+                        if(hamProbMap.containsKey(word) && actualClass.equals("Ham"))
+                        {
+                            probabilities.add(hamProbMap.get(word));
+                        }
+
+                    }
+                }
+                reader.close();
+                testFiles.add(new TestFile(file.getName(), spamProb(probabilities), actualClass));
+            }
+        }
+        return testFiles;
+    }
+    public double spamProb(List<Double> A)
+    {
+        double total = 0;
+        for(double a: A)
+        {
+            total = total + a; //Change this to use the formula for probability of spam
+        }
+        return 1.0/(1+Math.pow(Math.E,total)); // Find probability that the file is spam using formula
+    }
+
+    public void calculateProbabilities() //Fills in the probability maps
+    {
+        int totalSpam = trainSpamFreq.size(); //Total spam files
+        int totalHam = trainHamFreq.size(); //Total ham files
+        double probSpam;
+        double probHam;
+        double probSpamWord;
+        double probHamWord;
+        double probSpamFinal = 0;
+        double probHamFinal = 0;
+        double probability;
+
+
+        spamProbMap = new TreeMap<>(); //allocate space
+        hamProbMap = new TreeMap<>(); //allocate space
+        for(Map.Entry<String, Integer> entry: trainSpamFreq.entrySet()) //Iterate through hashmap
+        {
+            probSpam = (double)entry.getValue() / (double)totalSpam;
+            probHam = (double)entry.getValue() / (double)totalHam;
+            probSpamWord = probSpam / (probHam + probHam); //Calculate probability to be implemented properly(using the ln method)
+            probSpamFinal = probSpamFinal + Math.log(1-probSpamWord) - Math.log(probSpamWord);
+            probability = 1 / (1 + Math.pow(Math.E,probSpamFinal));
+
+
+            spamProbMap.put(entry.getKey(), probability); //Put word + the probability it is spam
+        }
+        for(Map.Entry<String, Integer> entry: trainHamFreq.entrySet())
+        {
+            probSpam = (double)entry.getValue() / (double)totalSpam;
+            probHam = (double)entry.getValue() / (double)totalHam;
+            probHamWord = probHam / (probHam + probSpam); //Calculate probability to be implemented properly(using the ln method)
+            probHamFinal = probHamFinal + Math.log(1-probHamWord) - Math.log(probHamWord);
+            probability = 1 / (1 + Math.pow(Math.E,probHamFinal));
+
+            hamProbMap.put(entry.getKey(), probability);
+        }
+    }
+    // to not repeat code for ham and spam folders, created method for it
+    public void train(String trainFolder,HashMap<String, Integer> map) throws IOException {
+
+        //open folder
+        File folder = new File(trainFolder);
+        File[] trainFiles = folder.listFiles();
+
+        assert trainFiles != null;
+        // for files in folder
+        for (File file : trainFiles)
+        {
+            if (file.isFile())
+            {
+                BufferedReader reader = new BufferedReader(new FileReader(file));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] words = line.split("\\s+"); // split in whitespace
+                    for (String word : words)
+                    {
+                        // ignore case
+                        word = word.toLowerCase();
+                        // update count for the word
+                        int count = map.getOrDefault(word, 0);
+                        map.put(word, count + 1);
+                    }
+                }
+                reader.close();
+            }
+        }
+    }
+
+
+    // Method to calculate the values
+    public void calculate(int numCorrectGuesses, int numGuesses, int numTruePositives, int numFalsePositives){
+        accuracy = ((double) numCorrectGuesses /numGuesses);
+        precision = ((double)numTruePositives/(numFalsePositives+numTruePositives));
+    }
+
+    // Getter to retrieve the Accuracy
+    public double getAccuracy(){
+        return this.accuracy;
+    }
+
+    // Getter to retrieve the Precision
+    public double getPrecision(){
+        return this.precision;
+    }
+
+}
