@@ -1,0 +1,87 @@
+package com.spamdetector.service;
+
+import com.spamdetector.domain.TestFile;
+import com.spamdetector.util.SpamDetector;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+
+import java.io.File;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.util.List;
+
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Response;
+
+@Path("/spam")
+public class SpamResource {
+
+//    your SpamDetector Class responsible for all the SpamDetecting logic
+    SpamDetector detector = new SpamDetector();
+
+    SpamResource() throws URISyntaxException {
+        URL url = this.getClass().getClassLoader().getResource("data");
+        assert url != null;
+        File mainDirectory = new File(((URL) url).toURI());
+
+        System.out.print("Training and testing the model, please wait");
+        this.detector.trainAndTest(mainDirectory);
+    }
+
+
+    @GET
+    @Produces("application/json")
+    public Response getSpamResults() throws URISyntaxException {
+        //create object with result of getTestResults
+        List<TestFile> test = trainAndTest();
+
+        //Check for case of null or empty
+        if((test == null) || test.isEmpty()){
+            return Response.status(Response.Status.NO_CONTENT)
+                    .entity("{Test file is not found or is empty}")
+                    .build();
+        }else{
+            return Response.status(Response.Status.OK)
+                    .entity(test)
+                    .header("Access-Control-Allow-Origin", "*")
+                    .build();
+        }
+    }
+
+
+    @GET
+    @Path("/accuracy")
+    @Produces("application/json")
+    public Response getAccuracy(){
+        double accuracy = detector.getAccuracy();
+        return Response.status(Response.Status.OK)
+                .entity(accuracy)
+                .header("Access-Control-Allow-Origin", "*")
+                .build();
+    }
+
+
+    @GET
+    @Path("/precision")
+    @Produces("application/json")
+    public Response getPrecision(){
+        double precision = detector.getPrecision();
+        return Response.status(Response.Status.OK)
+                .entity(precision)
+                .header("Access-Control-Allow-Origin", "*")
+                .build();
+    }
+
+
+    private List<TestFile> trainAndTest() throws URISyntaxException {
+        if (this.detector==null){
+            this.detector = new SpamDetector();
+        }
+
+        URL url = this.getClass().getClassLoader().getResource("data");
+        assert url != null;
+        File mainDirectory = new File(((URL) url).toURI());
+        return this.detector.trainAndTest(mainDirectory);
+    }
+}
